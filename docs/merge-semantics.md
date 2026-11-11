@@ -105,7 +105,10 @@ AST. No-op and one-sided merges preserve exact bytes. Concurrent merges preserve
 untouched mixed line endings and select one-sided whitespace changes. Inserted
 entries and sections follow the base's prevailing ending, with LF for ties or a
 base without newlines. Generated separators follow the surrounding output's
-prevailing ending. Conflict markers use LF. Existing content slices are never
+prevailing ending. The blank lines separating a category's last entry from the
+next section are boundary whitespace owned by the category suffix, not by the
+entry, so concurrent first entries merge without a blank line between them.
+Conflict markers use LF. Existing content slices are never
 normalized across the whole document.
 
 Every clean concurrent result is reparsed. Selected headings, entry content and

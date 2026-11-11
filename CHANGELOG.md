@@ -6,6 +6,13 @@ The format follows Keep a Changelog 1.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- Blank lines separating a category's last entry from the next heading now
+  merge as boundary whitespace instead of riding on the entry, so concurrent
+  additions to a previously empty category no longer gain a blank line between
+  the merged entries.
+
 ## [0.1.0] - 2026-10-19
 
 ### Added

@@ -157,13 +157,30 @@ pub fn parse(source: &str) -> Result<Document, ParseError> {
                 .collect();
             let mut entries = Vec::new();
             let mut blocks = Vec::new();
+            let mut last_entry_end = selected.last().map_or(end, |s| s.end);
             for (k, s) in selected.iter().enumerate() {
                 let next = selected.get(k + 1).map_or(s.end, |n| n.start);
                 let opaque = !source[s.end..next].trim().is_empty();
-                let span = Span {
+                let mut span = Span {
                     start: s.start,
                     end: if opaque { s.end } else { next },
                 };
+                if !opaque && k + 1 == selected.len() {
+                    // The blank lines separating the category's last entry from
+                    // the next section are boundary whitespace: they belong to
+                    // the suffix, never to the entry itself.
+                    let tail = source[span.start..span.end].trim_end_matches(['\r', '\n']);
+                    let mut keep = span.start + tail.len();
+                    let bytes = source.as_bytes();
+                    if bytes.get(keep) == Some(&b'\r') {
+                        keep += 1;
+                    }
+                    if bytes.get(keep) == Some(&b'\n') {
+                        keep += 1;
+                    }
+                    span.end = keep;
+                    last_entry_end = keep;
+                }
                 let normalized = identity::normalized(span.text(source));
                 entries.push(Entry {
                     span,
@@ -186,7 +203,7 @@ pub fn parse(source: &str) -> Result<Document, ParseError> {
                 end: selected.first().map_or(end, |s| s.start),
             };
             let suffix = Span {
-                start: selected.last().map_or(end, |s| s.end),
+                start: last_entry_end,
                 end,
             };
             doc.opaque_blocks.push(OpaqueBlock { span: prefix });

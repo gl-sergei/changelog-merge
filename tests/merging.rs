@@ -19,6 +19,27 @@ fn independent_additions() {
     assert_eq!(clean(&b, &o, &t), clean(&b, &t, &o));
 }
 #[test]
+fn same_anchor_additions_do_not_duplicate_the_boundary_blank_line() {
+    // Both branches add the first entry to a previously empty category. The
+    // blank line separating the section's last entry from the next heading is
+    // boundary whitespace: merging must not turn it into a blank line between
+    // the two new entries.
+    let b = "# Changelog\n\n## Unreleased\n\n### Fixed\n\n### Changed\n\n- Changed.\n";
+    let o = b.replace("### Changed", "- Fixed startup abort.\n\n### Changed");
+    let t = b.replace("### Changed", "- Fixed WAL queue stall.\n\n### Changed");
+    let r = clean(&b, &o, &t);
+    assert_eq!(r.matches("- Fixed").count(), 2, "{r}");
+    assert!(
+        !r.contains(".\n\n- Fixed"),
+        "boundary blank leaked between merged entries: {r}"
+    );
+    assert!(
+        r.contains(".\n\n### Changed\n\n- Changed.\n"),
+        "boundary blank before the next section lost: {r}"
+    );
+    assert_eq!(clean(&b, &t, &o), r);
+}
+#[test]
 fn edits_deletes_and_identical_modifications() {
     let b = doc("- Alpha.\n- Beta.\n- Gamma.\n");
     assert_eq!(
