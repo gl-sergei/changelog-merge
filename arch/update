@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Rebase the repository's `patched` branch onto the latest upstream release,
+# export it as the package patch, and rebuild the changelog-merge-patched
+# package.
+#
+# The patch branch carries only local commits: `git rebase --onto <tag>
+# origin/main` replays everything on `patched` that is not on origin/main,
+# so upstream commits between the release and main stay out of the package.
+#
+# Usage: ./update [--rebuild] [--install]
+#   --rebuild  rebuild even when the version and patch are unchanged
+#   --install  install the built package with pacman -U afterwards
+set -euo pipefail
+
+cd "$(dirname "$0")"
+repo=cachix/changelog-merge
+url="https://github.com/$repo"
+repo_root=$(pwd)/..
+branch=patched
+pkgname=changelog-merge-patched
+patchfile=$pkgname.patch
+
+rebuild=false
+install=false
+for arg in "$@"; do
+  case "$arg" in
+    --rebuild) rebuild=true ;;
+    --install) install=true ;;
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
+
+current=$(sed -n "s/^pkgver=\(['\"]\?\)\(.*\)\1$/\2/p" PKGBUILD | head -n1)
+[ -n "$current" ] || { echo "cannot read pkgver from PKGBUILD" >&2; exit 1; }
+
+# 1. Latest upstream release.
+tag=$(git ls-remote --tags --refs "$url.git" | sed 's#.*refs/tags/##' | sort -V | tail -n1)
+latest=${tag#v}
+[ -n "$latest" ] || { echo "cannot list upstream tags for $repo" >&2; exit 1; }
+
+# 2. Rebase the patch branch onto that release.
+git -C "$repo_root" fetch origin --tags --prune --quiet
+git -C "$repo_root" rev-parse --verify --quiet "refs/heads/$branch" >/dev/null || {
+  echo "no $branch branch in $repo_root; commit the local patch there first" >&2
+  exit 1
+}
+git -C "$repo_root" -c rebase.autoStash=true rebase --onto "$tag" origin/main "$branch"
+
+# 3. Export the patch.
+old_patch=$(sha256sum "$patchfile" 2>/dev/null | cut -d' ' -f1 || true)
+# The branch also carries the packaging commit (arch/, .gitignore); the
+# exported patch stays limited to source fixes for the release tarball.
+git -C "$repo_root" diff "$tag" "$branch" -- . ':(exclude)arch' ':(exclude).gitignore' > "$patchfile"
+new_patch=$(sha256sum "$patchfile" | cut -d' ' -f1)
+
+# 4. Track the release version.
+sed -i "s/^pkgver=.*/pkgver=$latest/" PKGBUILD
+sed -i 's/^pkgrel=.*/pkgrel=1/' PKGBUILD
+
+# 5. Rebuild only when something changed.
+built=$(ls "$pkgname-$latest"-*.pkg.tar.zst 2>/dev/null | head -n1 || true)
+if ! $rebuild && [ "$latest" = "$current" ] && [ "$new_patch" = "$old_patch" ] && [ -n "$built" ]; then
+  echo "already up to date ($latest, patch unchanged)"
+  exit 0
+fi
+
+updpkgsums
+makepkg -f
+rm -f "changelog-merge-$current.tar.gz" "$pkgname-$current.tar.gz"
+
+built=$(ls "$pkgname-$latest"-*.pkg.tar.zst 2>/dev/null | head -n1 || true)
+[ -n "$built" ] || { echo "no package file produced" >&2; exit 1; }
+echo "built $built"
+if $install; then
+  sudo pacman -U "$built"
+fi

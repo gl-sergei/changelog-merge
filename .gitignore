@@ -6,3 +6,11 @@
 /.agents/
 /.aws/
 /.codex/
+
+# makepkg working area (arch/ holds the PKGBUILD and update script; the
+# patch file is regenerated from this branch by arch/update)
+/arch/pkg/
+/arch/src/
+/arch/*.pkg.tar.zst
+/arch/*.tar.gz
+/arch/changelog-merge-patched.patch
